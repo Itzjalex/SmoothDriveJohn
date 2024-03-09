@@ -17,12 +17,14 @@ using namespace std;
 // Custom Variables
 bool one_cata = false;
 bool Cata_toggle = false;
-bool wing_out = false;
+bool left_wing_out = false;
+bool right_wing_out = false;
 bool end_out = false;
 int cata_speed = 80;
-std::string routes[3] = {"AWP", "Match"  "Score"};
+std::string routes[2] = {"AWP", "Score"};
 int selected_route = 0;
-bool pto_activated = false;
+bool hook_activated = false;
+int hook_trigger_timer = 0;
 //----------------------------------------//
 
 
@@ -33,7 +35,7 @@ bool skills = false; // SKILLS SELECTOR
 
   // Drive Controls
 bool drive_plus_turning = true; 
-bool drive_plus_forward = true; 
+bool drive_plus_forward = false; 
 bool standard_drive = true;
   // Auton
 bool auton_mode = false;
@@ -62,22 +64,22 @@ float x_true_step;
 
 // Defining Motors
 
-pros::ADIDigitalOut PTO(1); //e
-pros::ADIDigitalIn  auton_selector(2); //f
-pros::ADIDigitalOut WingR(3);
-pros::ADIDigitalOut WingL(4); //g
-pros::ADIDigitalOut endgame(5); //h
-pros::ADIDigitalOut Hook(6);
+pros::ADIDigitalOut PTO(5); //e
+pros::ADIDigitalIn  auton_selector(4); //d
+pros::ADIDigitalOut WingR(6);
+pros::ADIDigitalOut WingL(8); //g
+pros::ADIDigitalOut endgame(7); //h
+pros::ADIDigitalOut Hook(2);
 
-pros::Motor fourbar(8,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor Cata_Motor(19,pros::E_MOTOR_GEAR_RED, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor Snarfer(5,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor left_front_motor(12,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor right_front_motor(2,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor left_back_motor(14,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor right_back_motor(4,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor left_mid_motor(16,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
-pros::Motor right_mid_motor(6,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor fourbar(7,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor Cata_Motor(16,pros::E_MOTOR_GEAR_RED, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor Snarfer(9,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor left_front_motor(14,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor left_back_motor(15,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor left_mid_motor(17,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor right_front_motor(3,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor right_back_motor(5,pros::E_MOTOR_GEAR_GREEN, true, pros::E_MOTOR_ENCODER_DEGREES);
+pros::Motor right_mid_motor(10,pros::E_MOTOR_GEAR_GREEN, false, pros::E_MOTOR_ENCODER_DEGREES);
 // Set motor groups
 pros::Motor_Group left_motors ({left_front_motor, left_back_motor, left_mid_motor});
 pros::Motor_Group right_motors ({right_front_motor, right_back_motor, right_mid_motor});
@@ -85,15 +87,15 @@ pros::Motor_Group right_motors ({right_front_motor, right_back_motor, right_mid_
 // Controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 void on_center_button() {
-  static bool pressed = false;
+  // static bool pressed = false;
   
-	pressed = !pressed;
-  auton_mode = pressed;
-	if (pressed) {
-		pros::lcd::set_text(2, "Auton Mode: Offensive");
-	} else {
-		pros::lcd::set_text(2, "Auton Mode: Defensive");
-	}
+	// pressed = !pressed;
+  // auton_mode = pressed;
+	// if (pressed) {
+	// 	pros::lcd::set_text(2, "Auton Mode: Offensive");
+	// } else {
+	// 	pros::lcd::set_text(2, "Auton Mode: Defensive");
+	// }
 }
 
 /**
@@ -102,15 +104,18 @@ void on_center_button() {
  * All other competition modes are blocked by initialize; it is recommended
  * to keep execution time for this mode under a few seconds.
  */
+void fill_screen(int color=0xFF0000) {
+    // Set pen color
+    pros::screen::set_pen(color);
+    pros::screen::fill_rect(0, 0, 240, 400);
+}
+
+
 void initialize() {
 	pros::lcd::initialize();
 	pros::lcd::register_btn1_cb(on_center_button);  
-  left_front_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
-  left_back_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
-  left_mid_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
-  right_front_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
-  right_back_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
-  right_mid_motor.set_brake_mode(MOTOR_BRAKE_HOLD);
+  left_motors.set_brake_modes(MOTOR_BRAKE_HOLD);
+  right_motors.set_brake_modes(MOTOR_BRAKE_HOLD);
   fourbar.set_brake_mode(MOTOR_BRAKE_HOLD);
   Cata_Motor.set_brake_mode(MOTOR_BRAKE_COAST);
   Snarfer.set_brake_mode(MOTOR_BRAKE_HOLD);
@@ -138,18 +143,16 @@ void competition_initialize() {
   while (true){
     if (auton_selector.get_new_press()){
       if (selected_route > sizeof(routes)/sizeof(routes[0])-2){
-        selected = 0;
+        selected_route = 0;
       } else {
         selected_route ++;
       }
     }
-    if (selected == 0) {
-      fill_screen(0xFF0000); //red
-    } if else (selected == 1) {
+    if (selected_route == 0) {
+      fill_screen(0xFF0000); //red 
+    } else if (selected_route == 1) {
       fill_screen(0x00FF00); //green
-    } if else (selected == 2) {
-      fill_screen(0x0000FF); //blue
-    }
+    } 
     pros::screen::print(TEXT_SMALL, 1, "Selected: %s", routes[selected_route]);
     pros::delay(20);
   }
@@ -169,12 +172,10 @@ void competition_initialize() {
 
 // Autonomous Functions
 
-void fill_screen(int color=0xFF0000) {
-    // Set pen color
-    pros::screen::set_pen(color);
-    pros::screen::fill_rect(0, 0, pros::screen::get_width(), pros::screen::get_height());
+void change_wings(bool mode) { // LOW or HIGH
+    WingL.set_value(mode);
+    WingR.set_value(mode);
 }
-
 // On button press
 // stop motors
 // delay
@@ -210,10 +211,12 @@ void move( float inches, float velocity) { 	//action.take(1000);
 void autonawp() {
   move(6, 50);
   pros::delay(400);
-  turn(-50, 50);
+  turn(-55, 50);
+  pros::delay(200);
   move(30, 100);
-  pros::delay(1000);
-  turn(50, 100);
+  pros::delay(1200);
+  turn(40, 50);
+  pros::delay(200);
   Snarfer.move_velocity(-200);
   pros::delay(700);
   move(20, 200);
@@ -228,20 +231,23 @@ void autonawp() {
   pros::delay(800);
   move(7, 50);
   pros::delay(600);
-  turn(-40, 50);
+  turn(-50, 50);
 
-  Wing.set_value(HIGH);
-  move(21, 100);
+  change_wings(HIGH);
+  move(23, 100);
   pros::delay(900);
-  Wing.set_value(LOW);
-  pros::delay(200);
   turn(-10, 50);
-  move(11, 100);
+  move(10, 100);
+  change_wings(LOW);
+  
+  pros::delay(200);
+
+  move(10, 100);
 pros::delay(700);
-  turn(-40, 50);
+  turn(-30, 50);
   pros::delay(200);
   Snarfer.move_velocity(-200);
-  move(32, 70);
+  move(31, 70);
   Snarfer.move_velocity(-200);
   pros::delay(1800);
   Snarfer.move_velocity(-200);
@@ -251,12 +257,11 @@ pros::delay(700);
 }
 
 void autonscore(){
-  Wing.set_value(HIGH);
-  move(15, 100);
-  pros::delay(800);
-  Wing.set_value(LOW);
-  move(-3, 70);
-  pros::delay(300);
+  change_wings(HIGH);
+  move(19, 100);
+  pros::delay(900);
+  change_wings(LOW);
+  pros::delay(200);
   move(18, 70);
   pros::delay(800);
   turn(-40, 50);
@@ -277,8 +282,8 @@ void autonscore(){
   move(-14, 100);
   Snarfer.brake();
   pros::delay(700);
-  turn(-65, 50);
-  pros::delay(150);
+  turn(-70, 50);
+  pros::delay(250);
 
   move(57, 200);
   pros::delay(1100);
@@ -299,7 +304,7 @@ void autonscore(){
   Snarfer.move_velocity(-200);
   pros::delay(600);
   Snarfer.brake();
-  turn(-92, 50);
+  turn(-100, 50);
   pros::delay(100);
   Snarfer.move_velocity(200);
   Snarfer.move_velocity(200);
@@ -316,11 +321,11 @@ void autonscore(){
   Snarfer.brake();
   pros::delay(100);
   Snarfer.move_velocity(-200);
-  Wing.set_value(HIGH);
+  change_wings(HIGH);
   move(50, 200);
   pros::delay(800);
   move(-20, 200);
-  Wing.set_value(LOW);
+  change_wings(LOW);
   pros::delay(900);
   
  
@@ -350,23 +355,23 @@ void autonmatch() {
 
   move(-10, 100);
   pros::delay(400);
-  Wing.set_value(HIGH);
+  change_wings(HIGH);
   pros::delay(200);
   move(-24.5, 150);
   pros::delay(900);
   turn(320, 100);
-  Wing.set_value(LOW);
+  change_wings(LOW);
   pros::delay(1300);
   move(62, 150);
   pros::delay(1400);
-  Wing.set_value(HIGH);
+  change_wings(HIGH);
   pros::delay(300);
   turn(-90, 100);
   pros::delay(200);
   
   move(6, 100);
 pros::delay(500);
-  Wing.set_value(LOW);
+  change_wings(LOW);
   pros::delay(500);
   move(12, 100);
 pros::delay(800);
@@ -414,11 +419,11 @@ void autonskills() {
   move(60, 200);
   pros::delay(1400);
   turn(-40, 50);
-  Wing.set_value(HIGH);
+  change_wings(HIGH);
   pros::delay(200);
   move(40, 150);
   pros::delay(1900);
-  Wing.set_value(LOW);
+  change_wings(LOW);
   turn(20, 50);
   move(-30, 150);
   pros::delay(1100);
@@ -426,12 +431,12 @@ void autonskills() {
   move(70, 200);
   pros::delay(1600);
   turn(120, 100);
-  Wing.set_value(HIGH);
+  change_wings(HIGH);
   pros::delay(200);
   move(45, 200);
   
   pros::delay(1600);
-  Wing.set_value(LOW);
+  change_wings(LOW);
   move(-25, 150);
   pros::delay(1200);
   turn(-45, 50);
@@ -458,19 +463,49 @@ void autonskills() {
 
 void autonomous() {
   if (skills) {
-    auton_skills(); 
-  } else if (selected_route == 0){ // AWP
+    autonskills(); 
+  } else if (selected_route == 0){ // AWP (RED)
     autonawp();
-  } else if (selected_route == 1){ // Match
-    autonmatch();
-  } else if (selected_route == 2){ // Score
+  } else if (selected_route == 1){ // Score (GREEN)
     autonscore();
   }
     
 }
+void wings() {
+  if (controller.get_digital_new_press(DIGITAL_Y)){
+      left_wing_out = !left_wing_out;
+    }
+    if (controller.get_digital_new_press(DIGITAL_A)){
+      right_wing_out = !right_wing_out;
+    }
+    if (controller.get_digital_new_press(DIGITAL_B)){
+      if (right_wing_out == left_wing_out) { // If they are synced, toggle both.
+        left_wing_out = !left_wing_out;
+        right_wing_out = !right_wing_out;
+      }
+      if (right_wing_out) { // If only Right is out and Left is therfore in, extend Right.
+        left_wing_out = true;
+      }
+      if (left_wing_out) { // If only Left is out and Right is therfore in, extend Right.
+       right_wing_out = true;
+      }
+    }
+    // Update Wing States
+    if (left_wing_out){
+      WingL.set_value(HIGH);
+    } else {
+      WingL.set_value(LOW);
+    }
+    if (right_wing_out){
+      WingR.set_value(HIGH);
+    } else {
+      WingR.set_value(LOW);
+    }
+
+}
 
 void opcontrol() {
-  int cata_speed = 100;
+  int cata_speed = 127;
   while (true) {
 
     pros::lcd::clear();
@@ -486,24 +521,16 @@ void opcontrol() {
     }
     
     // Change catapult speed with Up & Down Buttons
-    if ((controller.get_digital_new_press(DIGITAL_RIGHT)) && (cata_speed < 100)){
-      cata_speed = cata_speed + 5; 
-    } else if  ((controller.get_digital_new_press(DIGITAL_LEFT)) && (cata_speed > 0)) {
-    cata_speed = cata_speed - 5; 
-    }
+    // if ((controller.get_digital_new_press(DIGITAL_RIGHT)) && (cata_speed < 100)){
+    //   cata_speed = cata_speed + 5; 
+    // } else if  ((controller.get_digital_new_press(DIGITAL_LEFT)) && (cata_speed > 0)) {
+    // cata_speed = cata_speed - 5; 
+    // }
 
-    // Toggle wings
-    if (controller.get_digital_new_press(DIGITAL_A)){
-      wing_out = !wing_out;
-    }
-    if (wing_out){
-      Wing.set_value(HIGH);
-    } else {
-      Wing.set_value(LOW);
-    }
-
+    // Change Wing States
+  
     // Toggle endgame
-    if (controller.get_digital_new_press(DIGITAL_UP)){
+    if (controller.get_digital_new_press(DIGITAL_LEFT)){
       end_out = !end_out;
     }
     if (end_out){
@@ -511,10 +538,11 @@ void opcontrol() {
     } else {
      endgame.set_value(LOW); 
     }
-
+    wings();
     // Snarfer Controls
     if(controller.get_digital(DIGITAL_R1)) { // Outtake with R1
       Snarfer.move_velocity(-200);
+      
     } else if (controller.get_digital(DIGITAL_R2)){ // Intake with R2
       Snarfer.move_velocity(200);
     } else {
@@ -531,7 +559,7 @@ void opcontrol() {
     }
     
     // Catapult Toggle
-    if(controller.get_digital_new_press(DIGITAL_R2)) {
+    if(controller.get_digital_new_press(DIGITAL_X)) {
       Cata_toggle = !Cata_toggle;
     }
     if(Cata_toggle){
@@ -540,9 +568,20 @@ void opcontrol() {
      Cata_Motor.move_velocity(0);
     }
 
-    // Activate Engame PTO
+    // Activate Hook
+    if (controller.get_digital_new_press(DIGITAL_UP)) { // If being held, let the stopwatch run
+      // if (pros::millis()-hook_trigger_timer >= 500) {  // If the stopwatch has run for 1 second, activate the PTO
+        //hook_activated = true;
+        Hook.set_value(HIGH);
+        
+    // } else { 
+    //   hook_trigger_timer = pros::millis();
+    }
+
+    // Activate PTO
     if (controller.get_digital_new_press(DIGITAL_DOWN)) {
-      pto_activated = true;
+      pros::screen::print(TEXT_SMALL, 2, "PTO On");
+      fourbar.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
       pros::delay(300);
       PTO.set_value(HIGH);
       pros::delay(300);
@@ -591,10 +630,10 @@ void opcontrol() {
     y_current += y_true_step;
     x_current += x_true_step;
 
-    if (pto_activated) {
-      left_motors.move(y_current * y_direction);
-      right_motors.move(y_current * y_direction);
-    } else {
+    if (hook_activated) { // Driving the climbing mechanism
+      left_motors.move(y_current);
+      right_motors.move(y_current);
+    } else { // Driving the wheels normally
       if (standard_drive) { // Drive forwards
         left_motors.move((y_current * y_direction) + (turn_constant * x_current * x_direction));
         right_motors.move(((y_current * y_direction) - (turn_constant * x_current * x_direction))/1.005);
